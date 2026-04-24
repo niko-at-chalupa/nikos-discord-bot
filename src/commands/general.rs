@@ -30,7 +30,7 @@ pub async fn userid(
 
     ctx.send(CreateReply::default()
         .ephemeral(true)
-        .content(format!("{}", the_user.id.get())),
+        .content(format!("`{}`", the_user.id.get())),
     ).await?;
 
     Ok(())
