@@ -1,5 +1,6 @@
 pub mod types;
 pub mod commands;
+pub mod ui;
 
 use poise::serenity_prelude as serenity;
 
@@ -29,6 +30,6 @@ async fn main() {
     let client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
         .await;
-    
+
     client.unwrap().start().await.unwrap();
 }
