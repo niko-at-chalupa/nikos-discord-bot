@@ -1,14 +1,12 @@
-use poise::CreateReply;
-use poise::serenity_prelude as serenity;
 use crate::types::Data;
 use crate::types::Error;
 use crate::types::Context;
 
 pub async fn commands() -> Vec<poise::Command<Data, Error>> {
-    println!("[general]");
+    println!("[core]");
 
     let commands = vec![
-        user_id()
+        ping()
     ];
 
     for command in &commands {
@@ -19,19 +17,15 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
     commands
 }
 
-/// Get someone's (or your own) user ID
+/// Ping the bot, to check if it's running okay.
 #[poise::command(slash_command)]
-pub async fn user_id(
+pub async fn ping(
     ctx: Context<'_>,
-    #[description = "Selected user"] user: Option<serenity::User>,
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
-    let the_user = user.as_ref().unwrap_or(ctx.author());
-
-    ctx.send(CreateReply::default()
+    ctx.send(poise::CreateReply::default()
         .ephemeral(true)
-        .content(format!("{}", the_user.id.get())),
+        .content("Pong!!!"),
     ).await?;
-
     Ok(())
 }
