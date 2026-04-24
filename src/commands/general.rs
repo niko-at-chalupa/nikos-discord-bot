@@ -8,7 +8,7 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
     println!("[general]");
 
     let commands = vec![
-        user_id()
+        userid()
     ];
 
     for command in &commands {
@@ -21,7 +21,7 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
 
 /// Get someone's (or your own) user ID
 #[poise::command(slash_command)]
-pub async fn user_id(
+pub async fn userid(
     ctx: Context<'_>,
     #[description = "Selected user"] user: Option<serenity::User>,
 ) -> Result<(), Error> {
