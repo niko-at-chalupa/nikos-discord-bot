@@ -1,5 +1,6 @@
 pub mod types;
 pub mod commands;
+pub mod ui;
 
 use poise::serenity_prelude as serenity;
 
@@ -19,14 +20,16 @@ async fn main() {
         })
         .setup(|ctx, _ready, framework| {
             Box::pin(async move {
+                println!("Logging in as {}", &ctx.cache.current_user().name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(Data {})
-            })
+            }) // scope ends
         })
         .build();
 
     let client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
         .await;
+
     client.unwrap().start().await.unwrap();
 }
