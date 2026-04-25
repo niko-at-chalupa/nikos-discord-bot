@@ -27,9 +27,17 @@ async fn main() {
         })
         .build();
 
-    let client = serenity::ClientBuilder::new(token, intents)
+    let mut client = serenity::ClientBuilder::new(token, intents)
         .framework(framework)
-        .await;
+        .await
+        .unwrap();
 
-    client.unwrap().start().await.unwrap();
+    let shard_manager = client.shard_manager.clone();
+    tokio::spawn(async move {
+        tokio::signal::ctrl_c().await.expect("Failed to listen for Ctrl+C");
+        println!("Shutting down...");
+        shard_manager.shutdown_all().await;
+    });
+
+    client.start().await.unwrap();
 }
