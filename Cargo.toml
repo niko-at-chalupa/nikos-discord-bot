@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 poise = "0.6.2"
+pyo3 = "0.28.3"
 tokio = { version = "1", features = ["full"] }
