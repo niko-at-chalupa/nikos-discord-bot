@@ -63,6 +63,36 @@ struct PostData {
     tag_info: TagInfo,
 }
 
+fn format_tags_with_ansi(tag_info: &TagInfo) -> String {
+    const GENERAL: &str = "\x1b[34m";
+    const META: &str = "\x1b[33m";
+    const ARTISTS: &str = "\x1b[31m";
+    const CHARACTERS: &str = "\x1b[32m";
+    const COPYRIGHTS: &str = "\x1b[35m";
+    const RESET: &str = "\x1b[0m";
+
+    let mut output = String::from("```ansi\n");
+    
+    if !tag_info.general.is_empty() {
+        output.push_str(&format!("{}{}{} ", GENERAL, tag_info.general.join(" "), RESET));
+    }
+    if !tag_info.meta.is_empty() {
+        output.push_str(&format!("{}{}{} ", META, tag_info.meta.join(" "), RESET));
+    }
+    if !tag_info.artists.is_empty() {
+        output.push_str(&format!("{}{}{} ", ARTISTS, tag_info.artists.join(" "), RESET));
+    }
+    if !tag_info.characters.is_empty() {
+        output.push_str(&format!("{}{}{} ", CHARACTERS, tag_info.characters.join(" "), RESET));
+    }
+    if !tag_info.copyrights.is_empty() {
+        output.push_str(&format!("{}{}{} ", COPYRIGHTS, tag_info.copyrights.join(" "), RESET));
+    }
+    
+    output.push_str("```");
+    output
+}
+
 async fn get_post_from_safebooru(query: &str) -> PyResult<PostData> {
     let query_str = query.to_string();
 
@@ -229,10 +259,13 @@ pub async fn teto(
         "[no artist tags]".to_string()
     };
 
+    let tags_display = format_tags_with_ansi(&post.tag_info);
+
     ctx.send(CreateReply::default()
         .ephemeral(true)
         .embed(CreateEmbed::new()
             .author(CreateEmbedAuthor::new(artists).url(format!("https://rule34.xxx/index.php?page=post&s=view&id={}", post.post_id)))
+            .description(tags_display)
             .image(post.file_url)
         )
     ).await?;
@@ -279,10 +312,13 @@ pub async fn spicyteto(
         "[no artist tags]".to_string()
     };
 
+    let tags_display = format_tags_with_ansi(&post.tag_info);
+
     ctx.send(CreateReply::default()
         .ephemeral(true)
         .embed(CreateEmbed::new()
             .author(CreateEmbedAuthor::new(artists).url(format!("https://rule34.xxx/index.php?page=post&s=view&id={}", post.post_id)))
+            .description(tags_display)
             .image(post.file_url)
         )
     ).await?;
