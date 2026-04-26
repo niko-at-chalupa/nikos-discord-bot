@@ -47,9 +47,20 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
 }
 
 #[derive(Debug)]
+struct TagInfo {
+    general: Vec<String>,
+    meta: Vec<String>,
+    artists: Vec<String>,
+    characters: Vec<String>,
+    copyrights: Vec<String>,
+}
+
+#[derive(Debug)]
 struct PostData {
     file_url: String,
     artists: Vec<String>,
+    post_id: u64,
+    tag_info: TagInfo,
 }
 
 async fn get_post_from_safebooru(query: &str) -> PyResult<PostData> {
@@ -70,19 +81,48 @@ async fn get_post_from_safebooru(query: &str) -> PyResult<PostData> {
 
             let file_url: String = post.getattr("file_url")?.extract()?;
 
-            let artists: Vec<String> = {
-                let tag_info = post.getattr("tag_info")?;
-                if tag_info.is_none() {
-                    vec![]
-                } else {
-                    tag_info
-                        .getattr("artists")?
-                        .extract::<HashSet<String>>()
-                        .map(|s| s.into_iter().collect())?
-                }
+            let post_id: u64 = post.getattr("post_id")?.extract()?;
+
+            let tag_info_obj = post.getattr("tag_info")?;
+            let (artists, tag_info) = if tag_info_obj.is_none() {
+                (vec![], TagInfo {
+                    general: vec![],
+                    meta: vec![],
+                    artists: vec![],
+                    characters: vec![],
+                    copyrights: vec![],
+                })
+            } else {
+                let general: Vec<String> = tag_info_obj
+                    .getattr("general")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let meta: Vec<String> = tag_info_obj
+                    .getattr("meta")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let artists_set: Vec<String> = tag_info_obj
+                    .getattr("artists")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let characters: Vec<String> = tag_info_obj
+                    .getattr("characters")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let copyrights: Vec<String> = tag_info_obj
+                    .getattr("copyrights")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                (artists_set.clone(), TagInfo {
+                    general,
+                    meta,
+                    artists: artists_set,
+                    characters,
+                    copyrights,
+                })
             };
 
-            Ok(PostData { file_url, artists })
+            Ok(PostData { file_url, artists, post_id, tag_info })
         })
     })
     .await
@@ -114,21 +154,50 @@ async fn get_post_from_rule34(query: &str) -> PyResult<PostData> {
 
             let post = posts.get_item(0)?;
 
+            let post_id = post.getattr("post_id")?.extract()?;
+
             let file_url: String = post.getattr("file_url")?.extract()?;
 
-            let artists: Vec<String> = {
-                let tag_info = post.getattr("tag_info")?;
-                if tag_info.is_none() {
-                    vec![]
-                } else {
-                    tag_info
-                        .getattr("artists")?
-                        .extract::<HashSet<String>>()
-                        .map(|s| s.into_iter().collect())?
-                }
+            let tag_info_obj = post.getattr("tag_info")?;
+            let (artists, tag_info) = if tag_info_obj.is_none() {
+                (vec![], TagInfo {
+                    general: vec![],
+                    meta: vec![],
+                    artists: vec![],
+                    characters: vec![],
+                    copyrights: vec![],
+                })
+            } else {
+                let general: Vec<String> = tag_info_obj
+                    .getattr("general")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let meta: Vec<String> = tag_info_obj
+                    .getattr("meta")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let artists_set: Vec<String> = tag_info_obj
+                    .getattr("artists")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let characters: Vec<String> = tag_info_obj
+                    .getattr("characters")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let copyrights: Vec<String> = tag_info_obj
+                    .getattr("copyrights")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                (artists_set.clone(), TagInfo {
+                    general,
+                    meta,
+                    artists: artists_set,
+                    characters,
+                    copyrights,
+                })
             };
 
-            Ok(PostData { file_url, artists })
+            Ok(PostData { file_url, artists, post_id, tag_info })
         })
     })
     .await
@@ -154,10 +223,16 @@ pub async fn teto(
         }
     };
 
+    let artists = if !post.artists.is_empty() {
+        post.artists.join(", ")
+    } else {
+        "[no artist tags]".to_string()
+    };
+
     ctx.send(CreateReply::default()
         .ephemeral(true)
         .embed(CreateEmbed::new()
-            .author(CreateEmbedAuthor::new(post.artists.join(", ")))
+            .author(CreateEmbedAuthor::new(artists).url(format!("https://rule34.xxx/index.php?page=post&s=view&id={}", post.post_id)))
             .image(post.file_url)
         )
     ).await?;
@@ -198,10 +273,16 @@ pub async fn spicyteto(
         }
     };
 
+    let artists = if !post.artists.is_empty() {
+        post.artists.join(", ")
+    } else {
+        "[no artist tags]".to_string()
+    };
+
     ctx.send(CreateReply::default()
         .ephemeral(true)
         .embed(CreateEmbed::new()
-            .author(CreateEmbedAuthor::new(post.artists.join(", ")))
+            .author(CreateEmbedAuthor::new(artists).url(format!("https://rule34.xxx/index.php?page=post&s=view&id={}", post.post_id)))
             .image(post.file_url)
         )
     ).await?;
