@@ -27,7 +27,8 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
 
     let mut failed_commands = vec![];
     let mut commands = vec![
-        teto()
+        teto(),
+        rei(),
     ];  
     if !rule34_key.is_empty() && !rule34_user_id.is_empty() {
         commands.push(spicyteto());
@@ -272,6 +273,46 @@ pub async fn teto(
 
     Ok(())
 }
+
+/// Get an image of Adachi Rei from https://safebooru.org
+#[poise::command(slash_command)]
+pub async fn rei(
+    ctx: Context<'_>,
+) -> Result<(), Error> {
+    ctx.defer_ephemeral().await?;
+
+    let post = match get_post_from_safebooru("adachi_rei sort:random -ai* rating:general").await {
+        Ok(post) => post,
+        Err(e) => {
+            ctx.send(CreateReply::default()
+                .ephemeral(true)
+                .content(format!("{}", crate::ui::ERROR))
+            ).await?;
+            println!("Error!! {}", e);
+            return Ok(());
+        }
+    };
+
+    let artists = if !post.artists.is_empty() {
+        post.artists.join(", ")
+    } else {
+        "[no artist tags]".to_string()
+    };
+
+    let tags_display = format_tags_with_ansi(&post.tag_info);
+
+    ctx.send(CreateReply::default()
+        .ephemeral(true)
+        .embed(CreateEmbed::new()
+            .author(CreateEmbedAuthor::new(artists))
+            .description(tags_display)
+            .image(post.file_url)
+        )
+    ).await?;
+
+    Ok(())
+}
+
 
 #[derive(Debug, poise::ChoiceParameter)]
 enum Rating {
