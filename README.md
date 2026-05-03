@@ -12,6 +12,11 @@ RULE34_API_KEY=(optional)-your-rule34.xxx-api-key
 RULE34_USER_ID=(optional)-your-rule34.xxx-user-id
 ```
 
+Install the following dependencies:
+- Python
+- Rust
+- Cargo
+
 After writing a `.env`, run the bot by running the following in shell:
 ```shell
 chmod +x run.sh && ./run.sh
