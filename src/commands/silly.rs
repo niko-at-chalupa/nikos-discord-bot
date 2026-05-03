@@ -6,6 +6,7 @@ use crate::types::Error;
 use crate::types::Context;
 use pyo3::prelude::*;
 use std::collections::HashSet;
+use std::process::Output;
 
 pub async fn commands() -> Vec<poise::Command<Data, Error>> {
     println!("[silly]");
@@ -34,6 +35,17 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
         commands.push(spicyteto());
     } else {
         failed_commands.push(spicyteto());
+    }
+
+    let which_fastfetch = tokio::task::spawn_blocking(|| {
+        which::which("fastfetch")
+    }).await;
+    match which_fastfetch {
+        Ok(_) => commands.push(fastfetch()),
+        Err(e) => {
+            failed_commands.push(fastfetch());
+            println!("{}", e);
+        }
     }
 
     for command in &commands {
@@ -362,6 +374,39 @@ pub async fn spicyteto(
             .description(tags_display)
             .image(post.file_url)
         )
+    ).await?;
+
+    Ok(())
+}
+
+/// Run fastfetch on the server
+#[poise::command(slash_command)]
+pub async fn fastfetch(
+    ctx: Context<'_>,
+) -> Result<(), Error> {
+    ctx.defer_ephemeral().await?;
+    let result = tokio::process::Command::new("fastfetch")
+        .arg("--logo-type")
+        .arg("none")
+        .output()
+        .await;
+
+    let output = match result {
+        Ok(output) => output,
+        Err(e) => {
+            ctx.send(CreateReply::default()
+                .ephemeral(true)
+                .content(format!("{}", crate::ui::ERROR))
+            ).await?;
+            println!("Error!! {}", e);
+            return Ok(());
+        }
+    };
+
+    let stdout_content = String::from_utf8_lossy(&output.stdout).replace("`", "\\`");
+    ctx.send(CreateReply::default()
+        .ephemeral(true)
+        .content(format!("```ansi\n{}\n```", stdout_content))
     ).await?;
 
     Ok(())
