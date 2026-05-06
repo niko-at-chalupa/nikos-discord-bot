@@ -16,7 +16,7 @@ else
     source .venv/bin/activate
 fi
 
-BINARY="./target/release/nikos-discord-bot"
+BINARY="./target/debug/nikos-discord-bot"
 if [ ! -f "$BINARY" ]; then
     cargo build
 else
@@ -24,8 +24,7 @@ else
 fi
 
 if [ -f "$BINARY" ]; then
-    chmod +x "$BINARY"
-    ./$BINARY
+    cargo run
 else
     exit 1
 fi
