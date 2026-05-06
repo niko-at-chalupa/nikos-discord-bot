@@ -2,6 +2,9 @@
 
 Fun discord bot written in Rust. Made for [Nikolandia](https://discord.gg/rtFfPaYQFP), and I don't see this being used anywhere else.
 
+> [!NOTE]
+> This is *only* on GitHub for transparency. While you *could* use this for your own server, it's not a good idea to do so.
+
 ## Setup
 
 Setup is easy using `run.sh`. Make a new `.env` file and fill in the following:
