@@ -247,6 +247,159 @@ async fn get_post_from_rule34(query: &str) -> PyResult<PostData> {
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
 }
 
+async fn get_posts_from_safebooru(query: &str, limit: usize) -> PyResult<Vec<PostData>> {
+    let query_str = query.to_string();
+
+    tokio::task::spawn_blocking(move || {
+        Python::attach(|py| {
+            let safebooru = py.import("safebooru")?;
+            let client = safebooru.getattr("client")?;
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("limit", limit)?;
+            let posts = client
+                .getattr("list_posts")?
+                .call((query_str,), Some(&kwargs))?;
+
+            let len = posts.len()?;
+            let mut result = Vec::with_capacity(len);
+
+            for i in 0..len {
+                let post = posts.get_item(i)?;
+
+                let file_url: String = post.getattr("file_url")?.extract()?;
+                let post_id: u64 = post.getattr("post_id")?.extract()?;
+
+                let tag_info_obj = post.getattr("tag_info")?;
+                let (artists, tag_info) = if tag_info_obj.is_none() {
+                    (vec![], TagInfo {
+                        general: vec![],
+                        meta: vec![],
+                        artists: vec![],
+                        characters: vec![],
+                        copyrights: vec![],
+                    })
+                } else {
+                    let general: Vec<String> = tag_info_obj
+                        .getattr("general")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let meta: Vec<String> = tag_info_obj
+                        .getattr("meta")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let artists_set: Vec<String> = tag_info_obj
+                        .getattr("artists")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let characters: Vec<String> = tag_info_obj
+                        .getattr("characters")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let copyrights: Vec<String> = tag_info_obj
+                        .getattr("copyrights")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    (artists_set.clone(), TagInfo {
+                        general,
+                        meta,
+                        artists: artists_set,
+                        characters,
+                        copyrights,
+                    })
+                };
+
+                result.push(PostData { file_url, artists, post_id, tag_info });
+            }
+
+            Ok(result)
+        })
+    })
+    .await
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
+}
+
+async fn get_posts_from_rule34(query: &str, limit: usize) -> PyResult<Vec<PostData>> {
+    let query_str = query.to_string();
+    let rule34_api_key = match std::env::var("RULE34_API_KEY") {
+        Err(_) => panic!("Check for if the environment variable RULE34_API_KEY is present before using get_posts_from_rule34"),
+        Ok(key) => key,
+    };
+    let rule34_user_id = match std::env::var("RULE34_USER_ID") {
+        Err(_) => panic!("Check for if the environment variable RULE34_USER_ID is present before using get_posts_from_rule34"),
+        Ok(key) => key,
+    };
+
+    tokio::task::spawn_blocking(move || {
+        Python::attach(|py| {
+            let rule34 = py.import("rule34")?;
+            let client = rule34.getattr("client")?;
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("limit", limit)?;
+            let posts = client
+                .getattr("Client")?
+                .call1((rule34_api_key, rule34_user_id))?
+                .call_method1("list_posts", (query_str,))?;
+
+            let len = posts.len()?;
+            let mut result = Vec::with_capacity(len);
+
+            for i in 0..len {
+                let post = posts.get_item(i)?;
+
+                let post_id = post.getattr("post_id")?.extract()?;
+                let file_url: String = post.getattr("file_url")?.extract()?;
+
+                let tag_info_obj = post.getattr("tag_info")?;
+                let (artists, tag_info) = if tag_info_obj.is_none() {
+                    (vec![], TagInfo {
+                        general: vec![],
+                        meta: vec![],
+                        artists: vec![],
+                        characters: vec![],
+                        copyrights: vec![],
+                    })
+                } else {
+                    let general: Vec<String> = tag_info_obj
+                        .getattr("general")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let meta: Vec<String> = tag_info_obj
+                        .getattr("meta")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let artists_set: Vec<String> = tag_info_obj
+                        .getattr("artists")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let characters: Vec<String> = tag_info_obj
+                        .getattr("characters")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    let copyrights: Vec<String> = tag_info_obj
+                        .getattr("copyrights")?
+                        .extract::<HashSet<String>>()
+                        .map(|s| s.into_iter().collect())?;
+                    (artists_set.clone(), TagInfo {
+                        general,
+                        meta,
+                        artists: artists_set,
+                        characters,
+                        copyrights,
+                    })
+                };
+
+                result.push(PostData { file_url, artists, post_id, tag_info });
+            }
+
+            Ok(result)
+        })
+    })
+    .await
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
+}
+
 /// Get an image of Kasane Teto from https://safebooru.org
 #[poise::command(slash_command)]
 pub async fn teto(
