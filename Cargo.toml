@@ -6,5 +6,6 @@ edition = "2024"
 [dependencies]
 poise = "0.6.2"
 pyo3 = { version = "0.28", features = ["auto-initialize"] }
+rand = "0.10.1"
 tokio = { version = "1", features = ["full"] }
 which = "6.0"

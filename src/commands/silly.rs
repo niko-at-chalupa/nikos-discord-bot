@@ -1,6 +1,7 @@
 use poise::CreateReply;
 use poise::serenity_prelude::CreateEmbed;
 use poise::serenity_prelude::CreateEmbedAuthor;
+use rand::seq::IndexedRandom;
 use crate::types::Data;
 use crate::types::Error;
 use crate::types::Context;
@@ -118,6 +119,14 @@ impl PostCache<'_> {
 
     pub async fn posts(&self) -> &Vec<PostData> {
         &self.posts
+    }
+
+    pub async fn pull_random(&self) -> Option<&PostData> {
+        if self.posts.is_empty() {
+            return None
+        }
+        let mut rng = rand::rng();
+        self.posts.choose(&mut rng)
     }
 
     async fn get_posts(&self) -> Result<Vec<PostData>, Error> {
