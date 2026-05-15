@@ -22,9 +22,7 @@ async fn main() {
             Box::pin(async move {
                 println!("Logging in as {}", &ctx.cache.current_user().name);
                 poise::builtins::register_globally(ctx, &framework.options().commands).await?;
-                Ok(Data {
-                    cache: tokio::sync::RwLock::new(std::collections::HashMap::new()),
-                })
+                Ok(Data {})
             }) // scope ends
         })
         .build();

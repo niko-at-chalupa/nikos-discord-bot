@@ -2,9 +2,12 @@ use poise::CreateReply;
 use poise::serenity_prelude::CreateEmbed;
 use poise::serenity_prelude::CreateEmbedAuthor;
 use rand::seq::IndexedRandom;
-use crate::types::{Data, Error, Context, PostData, TagInfo, PostProvider};
+use crate::types::Data;
+use crate::types::Error;
+use crate::types::Context;
 use pyo3::prelude::*;
 use std::collections::HashSet;
+use std::process::Output;
 
 pub async fn commands() -> Vec<poise::Command<Data, Error>> {
     println!("[silly]");
@@ -57,6 +60,90 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
     commands
 }
 
+#[derive(Debug)]
+struct TagInfo {
+    general: Vec<String>,
+    meta: Vec<String>,
+    artists: Vec<String>,
+    characters: Vec<String>,
+    copyrights: Vec<String>,
+}
+
+#[derive(Debug)]
+struct PostData {
+    file_url: String,
+    artists: Vec<String>,
+    post_id: u64,
+    tag_info: TagInfo,
+}
+
+#[derive(Debug)]
+enum PostProvider {
+    Safebooru,
+    Rule34,
+}
+
+#[derive(Debug)]
+struct PostCache<'a> {
+    posts: Vec<PostData>,
+    pub query: &'a str,
+    pub limit: usize,
+    pub provider: PostProvider,
+}
+
+impl PostCache<'_> {
+    pub async fn new(query: &str, limit: usize, provider: PostProvider) -> Result<PostCache, Error> {
+        let mut new = PostCache { 
+            posts: vec![],
+            query: query,
+            limit: limit,
+            provider: provider,
+        };
+        let result = new.fill().await;
+        match result {
+            Ok(_) => Ok(new),
+            Err(e) => Err(e)
+        }
+    }
+
+    pub async fn fill(&mut self) -> Result<(), Error> {
+        let result = self.get_posts();
+        match result.await {
+            Ok(posts) => {
+                self.posts = posts;
+                Ok(())
+            },
+            Err(e) => Err(e.into())
+        }
+    }
+
+    pub async fn posts(&self) -> &Vec<PostData> {
+        &self.posts
+    }
+
+    pub async fn pull_random(&self) -> Option<&PostData> {
+        if self.posts.is_empty() {
+            return None
+        }
+        let mut rng = rand::rng();
+        self.posts.choose(&mut rng)
+    }
+
+    async fn get_posts(&self) -> Result<Vec<PostData>, Error> {
+        let provider = &self.provider;
+        let query = self.query;
+        let limit = self.limit;
+        let result = match provider {
+            PostProvider::Safebooru => get_posts_from_safebooru(query, limit).await,
+            PostProvider::Rule34 => get_posts_from_rule34(query, limit).await,
+        };
+        match result {
+            Ok(posts) => Ok(posts),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
 fn format_tags_with_ansi(tag_info: &TagInfo) -> String {
     const GENERAL: &str = "\x1b[34m";
     const META: &str = "\x1b[33m";
@@ -87,22 +174,145 @@ fn format_tags_with_ansi(tag_info: &TagInfo) -> String {
     output
 }
 
-async fn get_cached_posts(ctx: &Context<'_>, query: &str, provider: PostProvider) -> Result<Vec<PostData>, Error> {
-    {
-        let cache = ctx.data().cache.read().await;
-        if let Some(posts) = cache.get(query) {
-            return Ok(posts.clone());
-        }
-    }
+async fn get_post_from_safebooru(query: &str) -> PyResult<PostData> {
+    let query_str = query.to_string();
 
-    let posts = match provider {
-        PostProvider::Safebooru => get_posts_from_safebooru(query, 50).await?,
-        PostProvider::Rule34 => get_posts_from_rule34(query, 50).await?,
+    tokio::task::spawn_blocking(move || {
+        Python::attach(|py| {
+            let safebooru = py.import("safebooru")?;
+            let client = safebooru.getattr("client")?;
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("limit", 1)?;
+            let posts = client
+                .getattr("list_posts")?
+                .call((query_str,), Some(&kwargs))?;
+
+            let post = posts.get_item(0)?;
+
+            let file_url: String = post.getattr("file_url")?.extract()?;
+
+            let post_id: u64 = post.getattr("post_id")?.extract()?;
+
+            let tag_info_obj = post.getattr("tag_info")?;
+            let (artists, tag_info) = if tag_info_obj.is_none() {
+                (vec![], TagInfo {
+                    general: vec![],
+                    meta: vec![],
+                    artists: vec![],
+                    characters: vec![],
+                    copyrights: vec![],
+                })
+            } else {
+                let general: Vec<String> = tag_info_obj
+                    .getattr("general")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let meta: Vec<String> = tag_info_obj
+                    .getattr("meta")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let artists_set: Vec<String> = tag_info_obj
+                    .getattr("artists")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let characters: Vec<String> = tag_info_obj
+                    .getattr("characters")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let copyrights: Vec<String> = tag_info_obj
+                    .getattr("copyrights")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                (artists_set.clone(), TagInfo {
+                    general,
+                    meta,
+                    artists: artists_set,
+                    characters,
+                    copyrights,
+                })
+            };
+
+            Ok(PostData { file_url, artists, post_id, tag_info })
+        })
+    })
+    .await
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
+}
+
+async fn get_post_from_rule34(query: &str) -> PyResult<PostData> {
+    let query_str = query.to_string();
+    let rule34_api_key = match std::env::var("RULE34_API_KEY") {
+        Err(_) => panic!("Check for if the environment variable RULE34_API_KEY is present before using get_post_from_rule34"),
+        Ok(key) => key,
+    };
+    let rule34_user_id = match std::env::var("RULE34_USER_ID") {
+        Err(_) => panic!("Check for if the environment variable RULE34_USER_ID is present before using get_post_from_rule34"),
+        Ok(key) => key,
     };
 
-    let mut cache = ctx.data().cache.write().await;
-    cache.insert(query.to_string(), posts.clone());
-    Ok(posts)
+    tokio::task::spawn_blocking(move || {
+        Python::attach(|py| {
+            let rule34 = py.import("rule34")?;
+            let client = rule34.getattr("client")?;
+
+            let kwargs = pyo3::types::PyDict::new(py);
+            kwargs.set_item("limit", 1)?;
+            let posts = client
+                .getattr("Client")?
+                .call1((rule34_api_key, rule34_user_id))?
+                .call_method1("list_posts", (query_str,))?;
+
+            let post = posts.get_item(0)?;
+
+            let post_id = post.getattr("post_id")?.extract()?;
+
+            let file_url: String = post.getattr("file_url")?.extract()?;
+
+            let tag_info_obj = post.getattr("tag_info")?;
+            let (artists, tag_info) = if tag_info_obj.is_none() {
+                (vec![], TagInfo {
+                    general: vec![],
+                    meta: vec![],
+                    artists: vec![],
+                    characters: vec![],
+                    copyrights: vec![],
+                })
+            } else {
+                let general: Vec<String> = tag_info_obj
+                    .getattr("general")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let meta: Vec<String> = tag_info_obj
+                    .getattr("meta")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let artists_set: Vec<String> = tag_info_obj
+                    .getattr("artists")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let characters: Vec<String> = tag_info_obj
+                    .getattr("characters")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                let copyrights: Vec<String> = tag_info_obj
+                    .getattr("copyrights")?
+                    .extract::<HashSet<String>>()
+                    .map(|s| s.into_iter().collect())?;
+                (artists_set.clone(), TagInfo {
+                    general,
+                    meta,
+                    artists: artists_set,
+                    characters,
+                    copyrights,
+                })
+            };
+
+            Ok(PostData { file_url, artists, post_id, tag_info })
+        })
+    })
+    .await
+    .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
 }
 
 async fn get_posts_from_safebooru(query: &str, limit: usize) -> PyResult<Vec<PostData>> {
@@ -265,8 +475,8 @@ pub async fn teto(
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
-    let posts = match get_cached_posts(&ctx, "kasane_teto sort:random -ai* rating:general", PostProvider::Safebooru).await {
-        Ok(posts) => posts,
+    let post = match get_post_from_safebooru("kasane_teto sort:random -ai* rating:general").await {
+        Ok(post) => post,
         Err(e) => {
             ctx.send(CreateReply::default()
                 .ephemeral(true)
@@ -276,7 +486,6 @@ pub async fn teto(
             return Ok(());
         }
     };
-    let post = posts.choose(&mut rand::rng()).cloned().ok_or("No posts found")?;
 
     let artists = if !post.artists.is_empty() {
         post.artists.join(", ")
@@ -305,8 +514,8 @@ pub async fn rei(
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
-    let posts = match get_cached_posts(&ctx, "adachi_rei sort:random -ai* rating:general", PostProvider::Safebooru).await {
-        Ok(posts) => posts,
+    let post = match get_post_from_safebooru("adachi_rei sort:random -ai* rating:general").await {
+        Ok(post) => post,
         Err(e) => {
             ctx.send(CreateReply::default()
                 .ephemeral(true)
@@ -316,7 +525,6 @@ pub async fn rei(
             return Ok(());
         }
     };
-    let post = posts.choose(&mut rand::rng()).cloned().ok_or("No posts found")?;
 
     let artists = if !post.artists.is_empty() {
         post.artists.join(", ")
@@ -360,9 +568,8 @@ pub async fn spicyteto(
         Rating::Questionable => "rating:questionable",
     };
 
-    let query = format!("kasane_teto sort:random score:>=10 -ai* -scat -fart -video {rating_tag}");
-    let posts = match get_cached_posts(&ctx, &query, PostProvider::Rule34).await {
-        Ok(posts) => posts,
+    let post = match get_post_from_rule34(format!("kasane_teto sort:random score:>=10 -ai* -scat -fart -video {rating_tag}").as_str()).await {
+        Ok(post) => post,
         Err(e) => {
             ctx.send(CreateReply::default()
                 .ephemeral(true)
@@ -372,7 +579,6 @@ pub async fn spicyteto(
             return Ok(());
         }
     };
-    let post = posts.choose(&mut rand::rng()).cloned().ok_or("No posts found")?;
 
     let artists = if !post.artists.is_empty() {
         post.artists.join(", ")
