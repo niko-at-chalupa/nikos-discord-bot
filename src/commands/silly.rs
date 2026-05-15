@@ -76,6 +76,65 @@ struct PostData {
     tag_info: TagInfo,
 }
 
+#[derive(Debug)]
+enum PostProvider {
+    Safebooru,
+    Rule34,
+}
+
+#[derive(Debug)]
+struct PostCache<'a> {
+    posts: Vec<PostData>,
+    pub query: &'a str,
+    pub limit: usize,
+    pub provider: PostProvider,
+}
+
+impl PostCache<'_> {
+    pub async fn new(query: &str, limit: usize, provider: PostProvider) -> Result<PostCache, Error> {
+        let mut new = PostCache { 
+            posts: vec![],
+            query: query,
+            limit: limit,
+            provider: provider,
+        };
+        let result = new.fill().await;
+        match result {
+            Ok(_) => Ok(new),
+            Err(e) => Err(e)
+        }
+    }
+
+    pub async fn fill(&mut self) -> Result<(), Error> {
+        let result = self.get_posts();
+        match result.await {
+            Ok(posts) => {
+                self.posts = posts;
+                Ok(())
+            },
+            Err(e) => Err(e.into())
+        }
+    }
+
+    pub async fn posts(&self) -> &Vec<PostData> {
+        &self.posts
+    }
+
+    async fn get_posts(&self) -> Result<Vec<PostData>, Error> {
+        let provider = &self.provider;
+        let query = self.query;
+        let limit = self.limit;
+        let result = match provider {
+            PostProvider::Safebooru => get_posts_from_safebooru(query, limit).await,
+            PostProvider::Rule34 => get_posts_from_rule34(query, limit).await,
+        };
+        match result {
+            Ok(posts) => Ok(posts),
+            Err(e) => Err(e.into()),
+        }
+    }
+}
+
 fn format_tags_with_ansi(tag_info: &TagInfo) -> String {
     const GENERAL: &str = "\x1b[34m";
     const META: &str = "\x1b[33m";
