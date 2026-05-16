@@ -672,7 +672,8 @@ pub async fn spicyteto(
 pub async fn fastfetch(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
-    ctx.defer_ephemeral().await?;
+    let private = get_privacy_and_defer(ctx).await?;
+
     let result = tokio::process::Command::new("fastfetch")
         .arg("--logo-type")
         .arg("none")
@@ -683,7 +684,7 @@ pub async fn fastfetch(
         Ok(output) => output,
         Err(e) => {
             ctx.send(CreateReply::default()
-                .ephemeral(true)
+                .ephemeral(private)
                 .content(format!("{}", crate::ui::ERROR))
             ).await?;
             println!("Error!! {}", e);
@@ -693,7 +694,7 @@ pub async fn fastfetch(
 
     let stdout_content = String::from_utf8_lossy(&output.stdout).replace("`", "\\`");
     ctx.send(CreateReply::default()
-        .ephemeral(true)
+        .ephemeral(private)
         .content(format!("```ansi\n{}\n```", stdout_content))
     ).await?;
 
