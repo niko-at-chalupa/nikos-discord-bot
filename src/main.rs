@@ -3,9 +3,10 @@ pub mod commands;
 pub mod ui;
 
 use std::sync::Arc;
+use std::fs;
 use poise::serenity_prelude as serenity;
 
-use crate::types::{Data, PostCache};
+use crate::types::{Data, Config};
 use crate::commands::silly::{get_posts_from_safebooru, get_posts_from_rule34};
 
 #[tokio::main]
@@ -13,8 +14,22 @@ async fn main() {
     let token = std::env::var("TOKEN").expect("missing TOKEN");
     let intents = serenity::GatewayIntents::non_privileged();
 
+    // Determine the configuration file path, favoring config.yaml if it exists
+    let config_path = if fs::metadata("config.yaml").is_ok() {
+        "config.yaml"
+    } else {
+        "example-config.yaml"
+    };
+
+    // Read and parse the YAML configuration file
+    let config_str = fs::read_to_string(config_path)
+        .expect("Failed to read configuration file");
+    let config: Config = serde_yaml::from_str(&config_str)
+        .expect("Failed to parse configuration file");
+
     let commands = crate::commands::all_commands().await;
-    let data = Arc::new(Data::new());
+    // Initialize shared state with the loaded configuration
+    let data = Arc::new(Data::new(config));
 
     let data_for_framework = data.clone();
     let framework = poise::Framework::builder()
