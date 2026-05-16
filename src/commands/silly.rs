@@ -84,15 +84,15 @@ enum PostProvider {
 }
 
 #[derive(Debug)]
-struct PostCache<'a> {
+struct PostCache {
     posts: Vec<PostData>,
-    pub query: &'a str,
+    pub query: String,
     pub limit: usize,
     pub provider: PostProvider,
 }
 
-impl PostCache<'_> {
-    pub async fn new(query: &str, limit: usize, provider: PostProvider) -> Result<PostCache, Error> {
+impl PostCache {
+    pub async fn new(query: String, limit: usize, provider: PostProvider) -> Result<PostCache, Error> {
         let mut new = PostCache { 
             posts: vec![],
             query: query,
@@ -131,11 +131,11 @@ impl PostCache<'_> {
 
     async fn get_posts(&self) -> Result<Vec<PostData>, Error> {
         let provider = &self.provider;
-        let query = self.query;
+        let query = &self.query;
         let limit = self.limit;
         let result = match provider {
-            PostProvider::Safebooru => get_posts_from_safebooru(query, limit).await,
-            PostProvider::Rule34 => get_posts_from_rule34(query, limit).await,
+            PostProvider::Safebooru => get_posts_from_safebooru(&query.to_string(), limit).await,
+            PostProvider::Rule34 => get_posts_from_rule34(&query.to_string(), limit).await,
         };
         match result {
             Ok(posts) => Ok(posts),
@@ -609,7 +609,7 @@ pub async fn fastfetch(
     let result = tokio::process::Command::new("fastfetch")
         .arg("--logo-type")
         .arg("none")
-        .output()
+        .output() 
         .await;
 
     let output = match result {
