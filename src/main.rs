@@ -14,8 +14,8 @@ async fn main() {
     let token = std::env::var("TOKEN").expect("missing TOKEN");
     let intents = serenity::GatewayIntents::non_privileged();
 
-    // Determine the configuration file path, favoring config.yaml if it exists
-    let config_path = if fs::metadata("config.yaml").is_ok() {
+    let config_exists = fs::metadata("config.yaml").is_ok();
+    let config_path = if config_exists {
         "config.yaml"
     } else {
         "example-config.yaml"
@@ -77,6 +77,13 @@ async fn main() {
             }
         }
     });
+
+    if config_exists {
+        println!("Config loaded successfully!");
+    } else {
+        println!("Using example config!! Please make a config.yaml that fills everything that example-config does.");
+    }
+
 
     let shard_manager = client.shard_manager.clone();
     tokio::spawn(async move {
