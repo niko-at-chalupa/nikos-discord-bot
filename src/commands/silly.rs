@@ -523,20 +523,10 @@ pub async fn rei(
     Ok(())
 }
 
-
-#[derive(Debug, poise::ChoiceParameter)]
-enum Rating {
-    #[name = "Questionable"]
-    Questionable,
-    #[name = "Explicit"]
-    Explicit,
-}
-
 /// Get a spicy image of Kasane Teto from https://rule34.xxx
 #[poise::command(slash_command, nsfw_only = true)]
 pub async fn spicyteto(
     ctx: Context<'_>,
-    #[description = "Rating"] rating: Rating,
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
