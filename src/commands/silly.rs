@@ -5,7 +5,7 @@ use rand::seq::IndexedRandom;
 use crate::types::{Data, Error, Context, TagInfo, PostData, PostProvider, PostCache};
 use pyo3::prelude::*;
 use std::collections::HashSet;
-use std::process::Output;
+use poise::serenity_prelude as serenity;
 use std::sync::Arc;
 
 pub async fn commands() -> Vec<poise::Command<Arc<Data>, Error>> {
@@ -437,12 +437,113 @@ pub async fn get_posts_from_rule34(query: &str, limit: usize) -> PyResult<Vec<Po
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
 }
 
+async fn confirmation_check(ctx: Context<'_>, main_message: &str, _cancel_message: &str, yes_and_no_buttons_text: [&str; 2]) -> Result<bool, Error> {
+    // 0. Check if the user is already confirmed for this session
+    {
+        let confirmed_users = ctx.data().confirmed_users.read().await;
+        if confirmed_users.contains(&ctx.author().id) {
+            return Ok(true);
+        }
+    }
+
+    // 1. Send the ephemeral warning using Poise's CreateReply
+    // This acknowledges the interaction if it hasn't been deferred yet.
+    let reply = ctx.send(
+        poise::CreateReply::default()
+            .content(main_message)
+            .ephemeral(true)
+            .components(vec![
+                serenity::CreateActionRow::Buttons(vec![
+                    serenity::CreateButton::new("yes").label(yes_and_no_buttons_text[0]).style(serenity::ButtonStyle::Success),
+                    serenity::CreateButton::new("no").label(yes_and_no_buttons_text[1]).style(serenity::ButtonStyle::Secondary),
+                ])
+            ])
+    ).await?;
+
+    // 2. Set up the message to wait for interactions on
+    let message = reply.message().await?;
+
+    // 3. Race them: button interaction OR text message OR timeout
+    let confirmed = tokio::select! {
+        // Wait for a button press on the ephemeral message (only from the author)
+        Some(press) = message.await_component_interaction(ctx.serenity_context())
+            .author_id(ctx.author().id)
+            .next() => {
+            let _ = press.defer(ctx.serenity_context()).await;
+            press.data.custom_id == "yes"
+        }
+        // Wait for a "y"/"yes" or "n"/"no" message from the author in the same channel
+        Some(msg) = serenity::collector::MessageCollector::new(ctx.serenity_context())
+            .author_id(ctx.author().id)
+            .channel_id(ctx.channel_id())
+            .filter(|m| {
+                let input = m.content.to_lowercase();
+                input == "y" || input == "yes" || input == "n" || input == "no"
+            })
+            .next() => {
+            let input = msg.content.to_lowercase();
+            input == "y" || input == "yes"
+        }
+        // Fail-safe timeout after 15 seconds
+        _ = tokio::time::sleep(std::time::Duration::from_secs(15)) => {
+            false
+        }
+    };
+
+    // 4. Clean up the ephemeral message
+    let _ = reply.delete(ctx).await;
+    
+    if confirmed {
+        // 5. Save the preference for the rest of the session
+        let mut confirmed_users = ctx.data().confirmed_users.write().await;
+        confirmed_users.insert(ctx.author().id);
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Helper to handle the bot channel confirmation and initial deferral
+async fn get_privacy_and_defer(ctx: Context<'_>) -> Result<bool, Error> {
+    let in_bot_channel = ctx.data().config.bot_channels.contains(&ctx.channel_id());
+    
+    if !in_bot_channel {
+        ctx.defer_ephemeral().await?;
+        return Ok(true);
+    }
+
+    let confirmed = {
+        let confirmed_users = ctx.data().confirmed_users.read().await;
+        confirmed_users.contains(&ctx.author().id)
+    };
+
+    if confirmed {
+        ctx.defer().await?;
+        return Ok(false);
+    }
+
+    let main_message = r#"You're in a bot channel, which means the output of this command will (by default) be shown to everybody in the channel!!
+-# While this is okay for pretty much everybody, consent is somewhat dubious for how the message will be sent (you might think it's just you, but it's actually everybody).
+```ansi
+Use the [0;2m[1;2mbuttons below[0m to confirm[0m, or [1;2msay[0m [2;32my[0m[1;2m/[0m[1;2m[0m[2;31mn[0m [1;2min the chat[0m.[0;2m[0;2m[0m[0m
+```
+-# Your choice will be saved and recorded. You can't change this on your own."#;
+    let cancel_message = "-# Timeout, but I'll send privately just in case...";
+    let yes_and_no_buttons_text = ["Yes, I'm okay with my messages out there!", "No, keep it to myself"];
+    
+    if confirmation_check(ctx, main_message, cancel_message, yes_and_no_buttons_text).await? {
+        Ok(false)
+    } else {
+        Ok(true)
+    }
+}
+
 /// Get an image of Kasane Teto from https://safebooru.org
 #[poise::command(slash_command)]
 pub async fn teto(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
-    ctx.defer_ephemeral().await?;
+    let private = get_privacy_and_defer(ctx).await?;
 
     let post = {
         let cache = ctx.data().teto_cache.read().await;
@@ -469,7 +570,7 @@ pub async fn teto(
     let tags_display = format_tags_with_ansi(&post.tag_info);
 
     ctx.send(CreateReply::default()
-        .ephemeral(true)
+        .ephemeral(private)
         .embed(CreateEmbed::new()
             .author(CreateEmbedAuthor::new(artists))
             .description(tags_display)
@@ -485,7 +586,7 @@ pub async fn teto(
 pub async fn rei(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
-    ctx.defer_ephemeral().await?;
+    let private = get_privacy_and_defer(ctx).await?;
 
     let post = {
         let cache = ctx.data().rei_cache.read().await;
@@ -512,7 +613,7 @@ pub async fn rei(
     let tags_display = format_tags_with_ansi(&post.tag_info);
 
     ctx.send(CreateReply::default()
-        .ephemeral(true)
+        .ephemeral(private)
         .embed(CreateEmbed::new()
             .author(CreateEmbedAuthor::new(artists))
             .description(tags_display)
@@ -528,7 +629,7 @@ pub async fn rei(
 pub async fn spicyteto(
     ctx: Context<'_>,
 ) -> Result<(), Error> {
-    ctx.defer_ephemeral().await?;
+    let private = get_privacy_and_defer(ctx).await?;
 
     let post = {
         let cache = ctx.data().spicyteto_cache.read().await;
@@ -555,7 +656,7 @@ pub async fn spicyteto(
     let tags_display = format_tags_with_ansi(&post.tag_info);
 
     ctx.send(CreateReply::default()
-        .ephemeral(true)
+        .ephemeral(private)
         .embed(CreateEmbed::new()
             .author(CreateEmbedAuthor::new(artists))
             .description(tags_display)
