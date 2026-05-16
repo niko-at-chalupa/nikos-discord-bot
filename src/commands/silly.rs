@@ -2,9 +2,7 @@ use poise::CreateReply;
 use poise::serenity_prelude::CreateEmbed;
 use poise::serenity_prelude::CreateEmbedAuthor;
 use rand::seq::IndexedRandom;
-use crate::types::Data;
-use crate::types::Error;
-use crate::types::Context;
+use crate::types::{Data, Error, Context, TagInfo, PostData, PostProvider, PostCache};
 use pyo3::prelude::*;
 use std::collections::HashSet;
 use std::process::Output;
@@ -60,36 +58,6 @@ pub async fn commands() -> Vec<poise::Command<Data, Error>> {
     commands
 }
 
-#[derive(Debug)]
-struct TagInfo {
-    general: Vec<String>,
-    meta: Vec<String>,
-    artists: Vec<String>,
-    characters: Vec<String>,
-    copyrights: Vec<String>,
-}
-
-#[derive(Debug)]
-struct PostData {
-    file_url: String,
-    artists: Vec<String>,
-    post_id: u64,
-    tag_info: TagInfo,
-}
-
-#[derive(Debug)]
-enum PostProvider {
-    Safebooru,
-    Rule34,
-}
-
-#[derive(Debug)]
-struct PostCache {
-    posts: Vec<PostData>,
-    pub query: String,
-    pub limit: usize,
-    pub provider: PostProvider,
-}
 
 impl PostCache {
     pub async fn new(query: String, limit: usize, provider: PostProvider) -> Result<PostCache, Error> {
