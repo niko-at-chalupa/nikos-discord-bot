@@ -1,6 +1,23 @@
-pub struct Data {} // User data, which is stored and accessible in all command invocations
+use tokio::sync::RwLock;
+use std::sync::Arc;
+
+pub struct Data {
+    pub rei_cache: RwLock<PostCache>,
+    pub teto_cache: RwLock<PostCache>,
+    pub spicyteto_cache: RwLock<PostCache>,
+} // User data, which is stored and accessible in all command invocations
+
+impl Data {
+    pub fn new() -> Self {
+        Self {
+            rei_cache: RwLock::new(PostCache::empty("rei".to_string(), 10, PostProvider::Safebooru)),
+            teto_cache: RwLock::new(PostCache::empty("teto".to_string(), 10, PostProvider::Safebooru)),
+            spicyteto_cache: RwLock::new(PostCache::empty("teto rating:explicit".to_string(), 10, PostProvider::Rule34)),
+        }
+    }
+}
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
-pub type Context<'a> = poise::Context<'a, Data, Error>;
+pub type Context<'a> = poise::Context<'a, Arc<Data>, Error>;
 
 #[derive(Debug, Clone)]
 pub struct TagInfo {
@@ -31,4 +48,15 @@ pub struct PostCache {
     pub query: String,
     pub limit: usize,
     pub provider: PostProvider,
+}
+
+impl PostCache {
+    pub fn empty(query: String, limit: usize, provider: PostProvider) -> Self {
+        Self {
+            posts: Vec::new(),
+            query,
+            limit,
+            provider,
+        }
+    }
 }

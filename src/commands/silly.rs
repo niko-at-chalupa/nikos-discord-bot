@@ -6,8 +6,9 @@ use crate::types::{Data, Error, Context, TagInfo, PostData, PostProvider, PostCa
 use pyo3::prelude::*;
 use std::collections::HashSet;
 use std::process::Output;
+use std::sync::Arc;
 
-pub async fn commands() -> Vec<poise::Command<Data, Error>> {
+pub async fn commands() -> Vec<poise::Command<Arc<Data>, Error>> {
     println!("[silly]");
 
     let rule34_key = match std::env::var("RULE34_API_KEY") {
@@ -283,7 +284,7 @@ async fn get_post_from_rule34(query: &str) -> PyResult<PostData> {
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
 }
 
-async fn get_posts_from_safebooru(query: &str, limit: usize) -> PyResult<Vec<PostData>> {
+pub async fn get_posts_from_safebooru(query: &str, limit: usize) -> PyResult<Vec<PostData>> {
     let query_str = query.to_string();
 
     tokio::task::spawn_blocking(move || {
@@ -355,7 +356,7 @@ async fn get_posts_from_safebooru(query: &str, limit: usize) -> PyResult<Vec<Pos
     .map_err(|e| PyErr::new::<pyo3::exceptions::PyRuntimeError, _>(e.to_string()))?
 }
 
-async fn get_posts_from_rule34(query: &str, limit: usize) -> PyResult<Vec<PostData>> {
+pub async fn get_posts_from_rule34(query: &str, limit: usize) -> PyResult<Vec<PostData>> {
     let query_str = query.to_string();
     let rule34_api_key = match std::env::var("RULE34_API_KEY") {
         Err(_) => panic!("Check for if the environment variable RULE34_API_KEY is present before using get_posts_from_rule34"),
@@ -443,14 +444,18 @@ pub async fn teto(
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
-    let post = match get_post_from_safebooru("kasane_teto sort:random -ai* rating:general").await {
-        Ok(post) => post,
-        Err(e) => {
+    let post = {
+        let cache = ctx.data().teto_cache.read().await;
+        cache.pull_random().await.cloned()
+    };
+
+    let post = match post {
+        Some(post) => post,
+        None => {
             ctx.send(CreateReply::default()
                 .ephemeral(true)
-                .content(format!("{}", crate::ui::ERROR))
+                .content("Cache empty, please wait a moment!")
             ).await?;
-            println!("Error!! {}", e);
             return Ok(());
         }
     };
@@ -482,14 +487,18 @@ pub async fn rei(
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
-    let post = match get_post_from_safebooru("adachi_rei sort:random -ai* rating:general").await {
-        Ok(post) => post,
-        Err(e) => {
+    let post = {
+        let cache = ctx.data().rei_cache.read().await;
+        cache.pull_random().await.cloned()
+    };
+
+    let post = match post {
+        Some(post) => post,
+        None => {
             ctx.send(CreateReply::default()
                 .ephemeral(true)
-                .content(format!("{}", crate::ui::ERROR))
+                .content("Cache empty, please wait a moment!")
             ).await?;
-            println!("Error!! {}", e);
             return Ok(());
         }
     };
@@ -531,19 +540,18 @@ pub async fn spicyteto(
 ) -> Result<(), Error> {
     ctx.defer_ephemeral().await?;
 
-    let rating_tag = match rating {
-        Rating::Explicit => "rating:explicit",
-        Rating::Questionable => "rating:questionable",
+    let post = {
+        let cache = ctx.data().spicyteto_cache.read().await;
+        cache.pull_random().await.cloned()
     };
 
-    let post = match get_post_from_rule34(format!("kasane_teto sort:random score:>=10 -ai* -scat -fart -video {rating_tag}").as_str()).await {
-        Ok(post) => post,
-        Err(e) => {
+    let post = match post {
+        Some(post) => post,
+        None => {
             ctx.send(CreateReply::default()
                 .ephemeral(true)
-                .content(format!("{}", crate::ui::ERROR))
+                .content("Cache empty, please wait a moment!")
             ).await?;
-            println!("Error!! {}", e);
             return Ok(());
         }
     };

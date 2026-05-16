@@ -1,8 +1,9 @@
 use crate::types::Data;
 use crate::types::Error;
 use crate::types::Context;
+use std::sync::Arc;
 
-pub async fn commands() -> Vec<poise::Command<Data, Error>> {
+pub async fn commands() -> Vec<poise::Command<Arc<Data>, Error>> {
     println!("[core]");
 
     let commands = vec![
