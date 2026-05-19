@@ -24,6 +24,8 @@ pub struct Data {
     pub teto_cache: RwLock<PostCache>,
     /// Cache for explicit Kasane Teto posts
     pub spicyteto_cache: RwLock<PostCache>,
+    /// Cache for tetorei posts
+    pub tetorei_cache: RwLock<PostCache>,
     /// Set of user IDs who have confirmed they want to proceed with sensitive commands
     pub confirmed_users: RwLock<HashSet<serenity::UserId>>,
 }
@@ -36,6 +38,7 @@ impl Data {
             rei_cache: RwLock::new(PostCache::empty("rei".to_string(), 10, PostProvider::Safebooru)),
             teto_cache: RwLock::new(PostCache::empty("teto".to_string(), 10, PostProvider::Safebooru)),
             spicyteto_cache: RwLock::new(PostCache::empty("teto rating:explicit".to_string(), 10, PostProvider::Rule34)),
+            tetorei_cache: RwLock::new(PostCache::empty("teto rei 2girls".to_string(), 10, PostProvider::Safebooru)),
             confirmed_users: RwLock::new(HashSet::new()),
         }
     }

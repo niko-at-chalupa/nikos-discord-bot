@@ -30,6 +30,7 @@ pub async fn commands() -> Vec<poise::Command<Arc<Data>, Error>> {
     let mut commands = vec![
         teto(),
         rei(),
+        tetorei(),
     ];  
     if !rule34_key.is_empty() && !rule34_user_id.is_empty() {
         commands.push(spicyteto());
@@ -633,6 +634,49 @@ pub async fn spicyteto(
 
     let post = {
         let cache = ctx.data().spicyteto_cache.read().await;
+        cache.pull_random().await.cloned()
+    };
+
+    let post = match post {
+        Some(post) => post,
+        None => {
+            ctx.send(CreateReply::default()
+                .ephemeral(true)
+                .content("Cache empty, please wait a moment!")
+            ).await?;
+            return Ok(());
+        }
+    };
+
+    let artists = if !post.artists.is_empty() {
+        post.artists.join(", ")
+    } else {
+        "[no artist tags]".to_string()
+    };
+
+    let tags_display = format_tags_with_ansi(&post.tag_info);
+
+    ctx.send(CreateReply::default()
+        .ephemeral(private)
+        .embed(CreateEmbed::new()
+            .author(CreateEmbedAuthor::new(artists))
+            .description(tags_display)
+            .image(post.file_url)
+        )
+    ).await?;
+
+    Ok(())
+}
+
+/// Get a yuri (sometimes) picture of Kasane Teto & Adachi Reix
+#[poise::command(slash_command)]
+pub async fn tetorei(
+    ctx: Context<'_>,
+) -> Result<(), Error> {
+    let private = get_privacy_and_defer(ctx).await?;
+
+    let post = {
+        let cache = ctx.data().tetorei_cache.read().await;
         cache.pull_random().await.cloned()
     };
 

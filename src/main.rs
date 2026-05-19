@@ -37,9 +37,10 @@ async fn main() {
             commands: commands,
             ..Default::default()
         })
-        .setup(move |ctx, _ready, _framework| {
+        .setup(move |ctx, _ready, framework| {
             Box::pin(async move {
                 println!("Logging in as {}", &ctx.cache.current_user().name);
+                poise::builtins::register_globally(ctx, &framework.options().commands).await?;
                 Ok(data_for_framework)
             })
         })
@@ -73,6 +74,12 @@ async fn main() {
             // Spicy Teto Cache
             if let Ok(posts) = get_posts_from_rule34(format!("kasane_teto sort:random score:>=10 -ai* -scat -fart -video").as_str(), 100).await {
                 let mut cache = data_for_task.spicyteto_cache.write().await;
+                cache.posts = posts;
+            }
+
+            // Tetorei cache
+            if let Ok(posts) = get_posts_from_safebooru(format!("kasane_teto adachi_rei 2girls sort:random").as_str(), 100).await {
+                let mut cache = data_for_task.tetorei_cache.write().await;
                 cache.posts = posts;
             }
         }
